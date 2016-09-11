@@ -1,0 +1,43 @@
+---
+title: "607Week2Assignment"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(RMySQL)
+
+
+```
+
+## Assignment SQL and R 
+
+Choose six recent popular movies.  Ask at least five people that you know (friends, family, classmates, imaginary friends) to rate each of these movie that they have seen on a scale of 1 to 5.  Take the results (observations) and store them in a SQL database.  Load the information into an R dataframe. 
+
+## Database creation
+
+I first created a MySQL database containing 3 tables.
+
+* User table
+* Movies tables
+* Transaction/fact table
+
+```{r cars}
+
+
+summary(cars)
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
