@@ -24,8 +24,10 @@ I first created a MySQL database containing 3 tables.
 * Movies tables
 * Transaction/fact table
 
-```{r cars}
+ ![](DataAnalytics/607Week2/Schema.PNG)
 
+```{r cars}
+ 
 
 summary(cars)
 
