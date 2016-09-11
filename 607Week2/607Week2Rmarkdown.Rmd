@@ -24,7 +24,7 @@ I first created a MySQL database containing 3 tables.
 * Movies tables
 * Transaction/fact table
 
- ![](DataAnalytics/607Week2/Schema.PNG)
+ ![](https://github.com/chrisestevez/DataAnalytics/blob/master/607Week2/Schema.PNG)
 
 ```{r cars}
  
