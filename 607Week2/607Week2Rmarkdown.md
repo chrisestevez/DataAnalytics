@@ -20,7 +20,7 @@ I first created a MySQL database containing 3 tables.
 ``` r
  # set MySQL information
 Yuser = 'root'
-Ypassword ='Omegacel312#!@'
+Ypassword ='password'
 Ydbname ='607week2'
 Yhost = 'localhost'
 
