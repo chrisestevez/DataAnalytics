@@ -1,0 +1,104 @@
+---
+title: "Project 1"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width =300)
+```
+
+In this project, you’re given a text file with chess tournament results where the information has some structure.  Your job is to create an R Markdown file that generates a .CSV file (that could for example be imported into a SQL database) with the following information for all of the players: Player’s Name, Player’s State, Total Number of Points, Player’s Pre-Rating, and Average Pre Chess Rating of Opponents For the first player, the information would be: Gary Hua, ON, 6.0, 1794, 1605 
+
+```{r}
+library("bitops")
+library("RCurl")
+library('stringr')
+
+# Load text file from Github repository
+url = "https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Project1/tournamentinfo.txt"
+# empty data frame to hold extracted values
+finalDataFrame = data.frame()
+Rdata = getURL(url)
+MyData = read.csv(text = Rdata,header = FALSE,stringsAsFactors = F)
+#initiate a loop and retreive row information
+for (i in 1:nrow(MyData)) {
+  playerNum= str_extract(MyData[i,],"[[:digit:]]+")
+  name = str_extract(MyData[i,],"(\\w+\\s\\w+\\s*\\w*\\s*\\w*)")
+    State = str_extract(MyData[i+1,],"[[:alpha:]]+")
+    NumPoints =str_extract(MyData[i,],"(\\d\\.\\d)")
+   PreRating = str_sub(MyData[i+1,],23, 26)
+    r1 =str_sub(MyData[i,], 51, 52)
+    r2 = str_sub(MyData[i,], 57, 58)
+    r3 = str_sub(MyData[i,], 63, 64)
+    r4 = str_sub(MyData[i,], 69, 70)
+    r5 = str_sub(MyData[i,], 75, 76)
+    r6 = str_sub(MyData[i,], 81, 82)
+    r7 = str_sub(MyData[i,], 87, 88)
+
+    #variable will hold data and append to data frame
+  capturenum = data.frame("PlayerNum"=playerNum ,"PlayerState"=State,"PlayerName"=name,"TotalNumPoints" =NumPoints, "PlayerPreRating"=PreRating, "AvgPrerate"=0.0,"game1"=r1,"game2"=r2,"game3"=r3,"game4"=r4,"game5"=r5,"game6"=r6,"game7"=r7,stringsAsFactors = F)  
+    finalDataFrame =rbind(finalDataFrame,capturenum)
+}
+# Here is the result of the finalDataFrame.
+head(finalDataFrame)
+
+#remove Nas from data
+datanoNas = data.frame()
+datanoNas =finalDataFrame[!is.na(finalDataFrame$TotalNumPoints),] 
+
+#Here is the current out put excluding Nas
+head(datanoNas)
+
+# Converted values to numeric in order to do calculations.
+datanoNas$game1=as.numeric(as.character(datanoNas$game1))
+datanoNas$game2=as.numeric(as.character(datanoNas$game2))
+datanoNas$game3=as.numeric(as.character(datanoNas$game3))
+datanoNas$game4=as.numeric(as.character(datanoNas$game4))
+datanoNas$game5=as.numeric(as.character(datanoNas$game5))
+datanoNas$game6=as.numeric(as.character(datanoNas$game6))
+datanoNas$game7=as.numeric(as.character(datanoNas$game7))
+datanoNas$PlayerPreRating=as.numeric(as.character(datanoNas$PlayerPreRating))
+
+
+# initial implementation 
+# using merge function  I was matching the opponents column to the players  pre rating.
+#End goal was to sum the players rating and divide by non Nas
+#Due to my inability to rename the column after matching to original data I abandon this method.
+#please see below example
+f1 =data.frame()
+l1= data.frame(datanoNas$PlayerNum,datanoNas$PlayerPreRating)  
+head(l1)
+f1=merge(datanoNas,l1,by.x = "game1",by.y = "datanoNas.PlayerNum",all.x = TRUE)
+head(f1)
+#colnames(f1$datanoNas.PlayerPreRating) ="Round1"
+l2= data.frame(datanoNas$PlayerNum,datanoNas$PlayerPreRating)
+head(l2)
+f1=merge(datanoNas,l2,by.x = "game2",by.y = "datanoNas.PlayerNum",all.x = TRUE)
+head(f1)
+
+ # borrowed code from below person in order to calculate opponents pregame average.
+#http://rpubs.com/brucehao/208280
+
+#I nitialize loop
+for (rowNum in 1:nrow(datanoNas)) {
+  #empty variable to hold opponents pregame average
+  favgpreRate = NULL  
+    for (colNum in 1:7) {
+      #included nested loop to iterate thru each column
+    colName = paste("game", colNum,sep = "") 
+    oppRowOriginal = datanoNas[rowNum, colName]
+    favgpreRate = c(favgpreRate,datanoNas[oppRowOriginal, "PlayerPreRating"])
+  }
+  datanoNas[rowNum, "AvgPrerate"] = round(mean(favgpreRate, na.rm = TRUE), 0) 
+  
+}
+#Output with pre game values
+head(datanoNas)
+# here I generate CSV file to local default directory.
+#http://stackoverflow.com/questions/16630085/write-csv-or-table-variables-to-file
+
+write.csv(datanoNas[,c("PlayerName","PlayerState","TotalNumPoints", "PlayerPreRating","AvgPrerate")], file="Project1outfile.csv",row.names=FALSE)
+
+
+```
