@@ -1,0 +1,97 @@
+---
+title: "607 Week5"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("bitops")
+library("RCurl")
+library("tidyr")
+library("dplyr")
+library("ggplot2")
+library("cowplot")
+
+```
+
+## Instructions
+Create a .CSV file (or optionally, a MySQL database!) that includes all of the information above.  You are encouraged to use a “wide” structure similar to how the information appears above, so that you can practice tidying and transformations as described below. 
+
+```{r cars}
+url = "https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/607Week5/arrivalDelays.csv"
+Rdata = getURL(url)
+MyData = read.csv(text = Rdata,header = TRUE,stringsAsFactors = F,sep=",")
+
+colnames(MyData)[which(names(MyData) == "X")] <- "Airline"
+colnames(MyData)[which(names(MyData) == "X.1")] <- "Status"
+
+MyData =MyData %>% drop_na()
+MyData[2,1]= "ALASKA"
+MyData[4,1]="AM WEST"
+
+MyData
+```
+
+## Data transformation
+```{r}
+FinalData = MyData %>% gather("Airport","Values",3:7) %>%
+ spread("Status","Values")
+FinalData
+```
+## Data Summary
+In order to effectively compare Alaska and AM West carriers, I analyzed their performance based on percentages in various categories.
+```{r}
+FinalData= FinalData %>%
+ group_by(Airline) %>% 
+ summarise(ontimeTotal =sum(`on time`),delayedTotal =sum(delayed), TotalFlights =sum(`on time`+delayed),OnTimep = round( sum(`on time`) / sum(delayed +`on time`), digits=2),Delayp = round(sum(delayed) / sum(delayed +`on time`),digits=2) )
+  
+
+FinalData
+```
+The summary indicates that AM West is is above Alaska airlines in on time flights by 2 percentage points.
+```{r,echo=FALSE}
+
+onTime = ggplot(FinalData, aes(Airline, OnTimep,fill = Airline) ) +
+  geom_bar(stat="identity", width = 0.5)+
+    geom_text(aes(label =   OnTimep), position = position_dodge(width=0.75), vjust = -0.25)+
+  ggtitle("Total Ontime %")+
+ theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+  
+
+delayChart = ggplot(FinalData, aes(Airline, Delayp,fill = Airline) ) +
+  geom_bar(stat="identity", width = 0.5)+
+    geom_text(aes(label =   Delayp), position = position_dodge(width=0.75), vjust = -0.25)+
+  ggtitle("Total Delay %")+
+   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+plot_grid(onTime, delayChart, align='h')
+```
+
+```{r}
+
+airportData = MyData %>% 
+  gather("Airport","Values",3:7) %>%
+ spread("Status","Values") %>% 
+group_by(Airline,Airport) %>% 
+ summarise(OnTimep = round( sum(`on time`) / sum(delayed +`on time`), digits=2),Delayp = round(sum(delayed) / sum(delayed +`on time`),digits=2) )
+airportData
+```
+In the chart below we can effectively see that Alaska airline has a better on time performance than AM West across all airports. Therefore, contradicting the previous summary.
+```{r,echo=FALSE}
+ggplot(airportData, aes(Airport, OnTimep,fill = Airline) ) +
+  geom_bar(stat="identity", width = 0.75, position = 'dodge')+
+    geom_text(aes(label =   OnTimep), position = position_dodge(width=0.75), vjust = -0.25)+
+  ggtitle("Airport Ontime %")+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+ The chart illustrates a high volume of delays from AM West in San Francisco and Seattle
+  
+```{r,echo=FALSE}
+ggplot(airportData, aes(Airport, Delayp,fill = Airline) ) +
+  geom_bar(stat="identity", width = 0.75, position = 'dodge')+
+  geom_text(aes(label =   Delayp), position = position_dodge(width=0.75), vjust = -0.25)+
+  ggtitle("Airport Delay %")+
+   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+
+```
