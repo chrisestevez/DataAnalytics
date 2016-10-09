@@ -1,0 +1,118 @@
+---
+title: "Project 2"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("bitops")
+library("RCurl")
+library("tidyr")
+library("dplyr")
+library("ggplot2")
+```
+
+#Instructions
+Your task is to: (1) Choose any three of the “wide” datasets identified in the Week 6 Discussion items.  (You may use your own dataset; please don’t use my Sample Post dataset, since that was used in your Week 6 assignment!)  For each of the three chosen datasets:  Create a .CSV file (or optionally, a MySQL database!) that includes all of the information included in the dataset.  You’re encouraged to use a “wide” structure similar to how the information appears in the discussion item, so that you can practice tidying and transformations as described below.  Read the information from your .CSV file into R, and use tidyr and dplyr as needed to tidy and transform your data.  [Most of your grade will be based on this step!]  Perform the analysis requested in the discussion item.  Your code should be in an R Markdown file, posted to rpubs.com, and should include narrative descriptions of your data cleanup work, analysis, and conclusions.   (2) Please include in your homework submission, for each of the three chosen datasets:   The URL to the .Rmd file in your GitHub repository, and   The URL for your rpubs.com web page. 
+
+#Data Loading
+```{r Data}
+url1="https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Project2/201606-citibike-tripdata.csv"
+url2="https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Project2/Crosstab%20Query.csv"
+url3="https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Project2/LendingClubData.csv"
+urlBike=getURL(url1)
+urlCross=getURL(url2)
+urlLend=getURL(url3)
+
+CitiBike = read.csv(text =urlBike,header = TRUE,stringsAsFactors = F,sep=",")
+CrossTab = read.csv(text=urlCross,header = TRUE,stringsAsFactors = F,sep=",")
+LendingTree = read.csv(text=urlLend,header = TRUE,stringsAsFactors = F,sep=",")
+```
+
+
+#Data Set 1 
+##Compare monthly citizenship for the given regions.
+Regions 2, 3 and 5 had the greatest population by month. This is also supported in the total population by region.
+
+```{r, fig.align='center', fig.height=7, fig.width=12, warning=FALSE}
+str(CrossTab)
+Crossdata =  gather(CrossTab,"Regions","Population",2:6)
+
+ggplot(Crossdata, aes(Regions, Population,fill = Regions) ) +
+  geom_bar(stat="identity", width = 0.5)+
+  facet_grid(~ Month )+
+ theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+      ggtitle("Population By Month")
+
+
+Crossdata = Crossdata %>%  group_by(Regions) %>% summarise(Total=sum(Population)) %>% arrange(desc(Total))
+
+ggplot(Crossdata, aes(Regions, Total,fill = Regions) ) +
+  geom_bar(stat="identity", width = 0.5)+
+ theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+      ggtitle("Total Population By Region")
+
+
+```
+
+
+#Data set 2
+##NYC Citibike data
+###Intructions
+The data has some missing values that will have to be addressed. The data can be analyzed to create a profile of they typical Citibike users/subscriber. The year can be converted to an age and converted to a categorical variable. Start and stop times can be used to calculate the average time each bike is used.
+
+After subsetting and analyzing the data the findings were the following:
+
+1. The majority of the users for citibike from the sample data are male 1/3 are female.
+2. The majority of the usage falls from from 22 - 40 years old.
+3. The majority of the time spent on a city bike ranges 2-20 minutes.
+
+```{r, fig.align='center', fig.height=7, fig.width=12, warning=FALSE}
+str(CitiBike)
+Citi=CitiBike %>%  drop_na() %>% 
+  select(tripduration,start.station.id,end.station.id,usertype,birth.year,gender)%>% 
+mutate(TripTimeMinutes=round(tripduration/60, digits=0),Age= 2016 - birth.year)
+Citi$gender =  c('1'="Male",'2'="Female")[ as.character(Citi$gender)]
+ggplot(Citi, aes(gender, fill = gender) ) +
+  geom_bar( width = 0.5)+
+      ggtitle("Usage By Gender")
+#https://www.r-bloggers.com/how-to-make-a-histogram-with-ggplot2/
+ggplot(data=Citi, aes(Age)) + 
+  geom_histogram(breaks=seq(18,80, by =2), col="red",aes(fill=..count..)) +
+     scale_fill_gradient("Count", low = "green", high = "red") +
+      ggtitle("Age Histogram")             
+ggplot(data=Citi, aes(TripTimeMinutes)) + 
+  geom_histogram(breaks=seq(1,75, by =1), col="red",aes(fill=..count..)) +
+     scale_fill_gradient("Count", low = "green", high = "red")+
+      ggtitle("Trip time Histogram")  
+
+
+```
+
+#Data set 3
+#Lending Club Data 
+
+https://www.lendingclub.com/info/download-data.action
+Just follow the link, we can download the data for the loans that were rejected and loans that is issued (Most current is 2016Q2).
+We can analyses the relationship among amount requested loan amount, debt to income ratio and employment length. Or we can compare income with interest rates and the rating of loans etc.
+
+Due to the size of the data set being 50MB I removed some columns to reduce the size. My analysis focused on loans made by grade. A loan with grade A is a lower interest loan and consider less risky. The majority of the loans distributed were A,B, and C.
+
+```{r, fig.align='center', fig.height=7, fig.width=12, warning=FALSE}
+str(LendingTree)
+LendData = LendingTree %>% 
+  select(loan_amnt,grade,addr_state) %>% 
+  group_by(addr_state,grade) %>% 
+  summarise(TotalLoanAMT=sum(loan_amnt),TotalLoans= n())
+
+
+  ggplot(LendData, aes(grade, TotalLoanAMT,fill = grade) ) +
+  geom_bar(stat="identity", width = 0.5)+
+      ggtitle("Total Loan disbursement AMT By Grade")
+  
+    ggplot(LendData, aes(grade, TotalLoans,fill = grade) ) +
+  geom_bar(stat="identity", width = 0.5)+
+       ggtitle("Total Loan disbursement By Grade")
+
+```
+
