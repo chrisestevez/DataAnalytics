@@ -1,0 +1,30 @@
+﻿{"fbooks":[
+	{
+"title": "Automated Data Collection with R",
+"authors": [
+		"Simon Munzert",
+                "Christian Rubba",
+                "Peter Meibner",
+                "Dominic Nyhuis"
+               ],
+"publisher" :"Wiley",
+"yearpublished": 2015
+	},
+	{
+"title": "R for Everyone",
+"authors": [
+		"Jared P. Lande"
+               ],
+"publisher" :"Jared P. Lande",
+"yearpublished": 2015
+	},
+	{
+"title": "Data Science for Business",
+"authors": [
+		"Foster Provost",
+                "Tom Fawcett"
+               ],
+"publisher" :"O'Reilly",
+"yearpublished": 2013
+	}]
+}
