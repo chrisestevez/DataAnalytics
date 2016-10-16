@@ -1,28 +1,21 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
-
+<?xml version="1.0" encoding="UTF-8"?>
 <fbooks>
-
- <book>
-    <title>Automated Data Collection with R</title>
-    <author1>Simon Munzert</author1>
-    <author2>Christian Rubba</author2>
-    <author3>Peter Meibner</author3>
-    <author4>Dominic Nyhuis</author4>
-    <publisher>Wiley</publisher>
-    <yearpublished>2015</yearpublished>
-  </book>
-  <book>
-    <title>R for Everyone</title>
-    <author1>Jared P. Lander</author1>
-    <publisher>Pearson</publisher>
-    <yearpublished>2015</yearpublished>
-  </book>
-  <book>
-    <title>Data Science for Business</title>
-    <author1>Foster Provost</author1>
-    <author2>Tom Fawcett</author2> 
-    <publisher>O Reilly</publisher>
-    <yearpublished>2013</yearpublished>
- </book>
- 
+<book>
+<title>Automated Data Collection with R</title>
+<authorname>Simon Munzert,Christian Rubba,Peter Meibner,Dominic Nyhuis</authorname>
+<publisher>Wiley</publisher>
+<yearpublished>2015</yearpublished>
+</book>
+<book>
+<title>R for Everyone</title>
+<authorname>Jared P. Lander</authorname>
+<publisher>Pearson</publisher>
+<yearpublished>2015</yearpublished>
+</book>
+<book>
+<title>Data Science for Business</title>
+<authorname>Foster Provost,Tom Fawcett</authorname>
+<publisher>O'Reilly</publisher>
+<yearpublished>2013</yearpublished>
+</book>
 </fbooks> 
