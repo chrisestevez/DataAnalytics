@@ -1,0 +1,29 @@
+---
+title: "607Week9"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(jsonlite)
+library(knitr)
+```
+
+# Assignment Web APIs 
+The New York Times web site provides a rich set of APIs, as described here:  http://developer.nytimes.com/docs You'll need to start by signing up for an API key. Your task is to choose one of the New York Times APIs, construct an interface in R to read in the JSON data, and transform it to an R data frame. 
+
+
+#Obtaining Data from NY Times
+After Obtaining the API key I used the fromJSON function from the JsonLite package.This allowed me to extract the top news articles from the NY Times Website.The request downloaded 28 observation with 23 columns.I only extracted 4 columns from the universe that I later renamed.Finally, I use the Kable function to format the data frame into a well formatted table.
+
+```{r }
+url = "https://api.nytimes.com/svc/topstories/v2/home.json?sectionresponse_format"
+api ="&api-key=31b11f11ba3f431d8f769aed3720d527"
+
+getdata = fromJSON(paste0(url,api))
+NYTimesData = data.frame(getdata)
+FilterData = NYTimesData[, c("results.title", "results.abstract","results.byline","results.url" )]
+colnames( FilterData) = c("Title","Snipet","Author","Link")   
+kable(FilterData)
+```
+
