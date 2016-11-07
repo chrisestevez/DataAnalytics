@@ -1,0 +1,151 @@
+---
+title: "607Week10"
+output: 
+  html_notebook:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: show
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tm")
+library("RTextTools")
+library("stringr")
+library("SnowballC")
+
+
+```
+#Info
+It can be useful to be able to classify new "test" documents using already classified "training" documents. A common example is using a corpus of labeled spam and ham (non-spam) e-mails to predict whether or not a new document is spam. 
+For this project, you can start with a spam/hamdataset, then predict the class of new documents (either withheld from the training dataset or from another source such as your own spam folder).  One example corpus: https://spamassassin.apache.org/publiccorpus/
+
+
+#Intro
+I initiated this project by first downloading the data from spamassassin's publiccorpus. I later extracted this information into folders. There were two folders spam and ham. The goal of the assignment was to read the files in to R and predict their clasification.Below, I started loading ham data. The code was adapted from an .r-bloggers article.
+```{r Ham, warning=FALSE}
+
+hamdir<-"C:/Users/OmegaCel/Documents/MasterDataAnalytics/IS607DataAcquisition&Management/Week10/easy_ham/"
+hamList= dir(hamdir)
+HamMSG = c()
+for(i in 1:length(hamList)) {
+  file = paste0(hamdir,hamList[i])
+  connection = file(file, open="rt", encoding="latin1")
+  text = readLines(connection)
+  msg = text[seq(which(text=="")[1]+1,length(text),1)]
+  close(connection)
+  result = c(paste(msg, collapse=" "))
+  HamMSG = rbind(HamMSG,result)
+}
+HamMSGdf = data.frame(HamMSG,stringsAsFactors = FALSE, row.names = NULL)
+
+```
+
+#Spam
+Here we are performing the same step as above, but with the Spam dataset.
+```{r Spam, warning=FALSE}
+spamdir<-"C:/Users/OmegaCel/Documents/MasterDataAnalytics/IS607DataAcquisition&Management/Week10/spam/"
+spamList= dir(spamdir)
+SpamMSG = c()
+for(i in 1:length(spamList)) {
+  file = paste0(spamdir,spamList[i])
+  connection = file(file, open="rt", encoding="latin1")
+  text = readLines(connection)
+  msg = try(text[seq(which(text=="")[1]+1,length(text),1)], silent = TRUE)
+  close(connection)
+  result = c(paste(msg, collapse=" "))
+  SpamMSG = rbind(SpamMSG,result)
+}
+SpamMSGdf = data.frame(SpamMSG,stringsAsFactors = FALSE, row.names = NULL)
+
+
+```
+
+
+In this step I created a corpus and assign a meta tag to Spam and Ham dataset. I also combine both datasets in order to further analyze the data. I tried two additional methods before aquiring one sutable to me.
+```{r corpus, warning=FALSE}
+SpamCorpus = Corpus(VectorSource(SpamMSGdf$SpamMSG))
+
+# meta(SpamCorpus,"Class") = "Spam"
+# meta(SpamCorpus, "Class")
+#meta(SpamCorpus[[1]],"Class") = "Spam"
+for(i in 1:length(SpamCorpus)){
+  meta(SpamCorpus[[i]], "Class") = "Spam"
+}
+
+HamCorpus = Corpus(VectorSource(HamMSGdf$HamMSG))
+# meta(HamCorpus,"Class") = "Ham"
+# meta(HamCorpus, "Class")
+
+#meta(HamCorpus[[1]],"Class") = "Ham"
+for(i in 1:length(HamCorpus)){
+  meta(HamCorpus[[i]], "Class") = "Ham"
+}
+
+HamandSpamCorp = c(SpamCorpus,HamCorpus)
+
+
+```
+#Data Clensing
+After creating a corpus I initiated the tm package functions to remove unwanted words, tags, and puntuation. Most of the steps came from Automated data collection Ch10. Upon encountering errors trying to create the TermDocumentMatrix  I turned to stack overflow.
+```{r }
+
+CleanHamandSpamCorp = tm_map(HamandSpamCorp,removeNumbers)
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,str_replace_all,pattern = "<.*?>", replacement =" ")
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,str_replace_all,pattern ="\\=", replacement =" ")
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,str_replace_all,pattern = "[[:punct:]]", replacement =" ")
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,removeWords, words= stopwords("en"))
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,tolower)
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,stripWhitespace)
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp,stemDocument)
+#http://stackoverflow.com/questions/24191728/documenttermmatrix-error-on-corpus-argument
+CleanHamandSpamCorp = tm_map(CleanHamandSpamCorp, PlainTextDocument)
+#http://stackoverflow.com/questions/18504559/twitter-data-analysis-error-in-term-document-matrix
+CleanHamandSpamCorp = corpus <- Corpus(VectorSource(CleanHamandSpamCorp))
+
+#CleanHamandSpamCorp [[1]][[1]]
+
+tdmHS = TermDocumentMatrix(CleanHamandSpamCorp)
+tdmHS
+melabels = factor(unlist(meta(HamandSpamCorp, "Class")))
+#aa = as.data.frame(as.matrix(tdmHS))
+
+
+len = length(melabels)
+```
+
+#Container
+I encountered many problems in this step. I followed the books intructions but no solution was generated. I was thinkin the error happend when I combined both datasets.The code works up untill the creation of the container.The error witness is the following:
+Error in svm.default(x = container@training_matrix, y = container@training_codes,  : 
+  x and y don't match
+
+```{r container}
+
+TrainP = round(len * .8)
+tdmHS = removeSparseTerms(tdmHS, 1-(25/length(HamandSpamCorp)))
+
+
+Mycontainer = create_container(tdmHS,
+                             labels = melabels,
+                             trainSize=1:1500,
+                             testSize=1501:1959,
+                             virgin=FALSE)
+
+# svm = train_model(Mycontainer, "SVM")
+# tree = train_model(Mycontainer, "TREE")
+# maxent = train_model(Mycontainer, "MAXENT")
+# 
+# svmOut = classify_model(Mycontainer,svm)
+# treeOut = classify_model(Mycontainer, tree)
+# maxentOut = classify_model(Mycontainer,maxent)
+# 
+# head(svmOut)
+# head(treeOut)
+# head(maxentOut)
+```
+
+#References
+ https://rpubs.com/anilcs13m/126170
+https://www.r-bloggers.com/classifying-emails-as-spam-or-ham-using-rtexttools/
