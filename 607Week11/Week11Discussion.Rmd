@@ -1,0 +1,43 @@
+---
+title: "week11Discussion"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Scenario Design
+1.	Who are your target users?
+
+People searching for movies.
+
+2.	What are their key goals?
+
+Find movie recommendations similar to currently search movie.
+
+3.	How can you help them accomplish those goals?
+
+Keeping the spirit of recommending movies based on the searched movie. The way to help them accomplish their goals would be to use cookies to track user past searches and identify topics that could be used to recommend a movie the user might like.
+
+#Reverse Engineer
+
+2.	Attempt to reverse engineer what you can about the site, from the site interface and any available information that you can find on the Internet or elsewhere. 
+
+The site is very simple and the recommended movies in a carousel.I must assume that some sort of relationship must exist between movies in a particular genre.
+
+
+![Code from website](https://github.com/chrisestevez/DataAnalytics/blob/master/607Week11/Code.JPG?raw=true)
+
+
+
+![Movie recomendations](https://github.com/chrisestevez/DataAnalytics/blob/master/607Week11/Movies.JPG?raw=true)
+
+#Recommendations
+Include specific recommendations about how to improve the site's recommendation capabilities going forward.  
+
+1.Use cookies to specifically target users who have not log in to the website.
+
+2.Include recommendations to the top right hand side of the screen.
+
+3.Increase recommendations for other genre the user might like.
