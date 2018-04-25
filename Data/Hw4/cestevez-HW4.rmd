@@ -1,0 +1,418 @@
+---
+title: "Data 621"
+author: "Christopher Estevez"
+subtitle: HW 4
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    always_allow_html: yes
+    code_folding: hide
+    highlight: zenburn
+    theme: lumen
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library("psych")
+library("caret")
+library("pROC")
+library("dplyr")
+library("car")
+library("kableExtra")
+library("mlbench")
+
+#devtools::session_info()
+
+loc_train = "https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Data/Hw4/insurance_training_data.csv"
+loc_test = "https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Data/Hw4/insurance-evaluation-data.csv"
+
+train_df = read.csv(loc_train, stringsAsFactors = FALSE)
+test_df = read.csv(loc_test, stringsAsFactors = FALSE)
+
+MY_ROC = function(labels, scores,pname){
+  labels = labels[order(scores, decreasing=TRUE)]
+  result =data.frame(TPR=cumsum(labels)/sum(labels), FPR=cumsum(!labels)/sum(!labels), labels)
+  
+  dFPR = c(diff(result$FPR), 0)
+  dTPR = c(diff(result$TPR), 0)
+  AUC = round(sum(result$TPR * dFPR) + sum(dTPR * dFPR)/2,4)
+
+  plot(result$FPR,result$TPR,type="l",main =paste0(pname," ROC Curve"),ylab="Sensitivity",xlab="1-Specificity")
+  abline(a=0,b=1)
+  legend(.6,.2,AUC,title = "AUC")
+  
+}
+
+#?describe
+#describe(train_df,na.rm = TRUE)
+```
+#Overview
+In this homework assignment, you will explore, analyze and model a data set containing approximately 8000 records representing a customer at an auto insurance company. Each record has two response variables. The first response variable, TARGET_FLAG, is a 1 or a 0. A 1 means that the person was in a car crash. A zero means that the person was not in a car crash. The second response variable is TARGET_AMT. This value is zero if the person did not crash their car. But if they did crash their car, this number will be a value greater than zero.
+
+Your objective is to build multiple linear regression and binary logistic regression models on the training data to predict the probability that a person will crash their car and also the amount of money it will cost if the person does crash their car. You can only use the variables given to you (or variables that you derive from the variables provided). Below is a short description of the variables of interest in the data set:
+
+##Deliverables:
+* A write-up submitted in PDF format. Your write-up should have four sections. Each one is described below. You may assume you are addressing me as a fellow data scientist, so do not need to shy away from technical details. 
+
+* Assigned predictions (probabilities, classifications, cost) for the evaluation data set. Use 0.5 threshold. 
+
+* Include your R statistical programming code in an Appendix. 
+
+![](https://github.com/chrisestevez/DataAnalytics/blob/master/Data/Hw4/Capture.JPG?raw=true)
+
+[ Insurance Institute for Highway Safety](http://www.iihs.org/iihs/sr/statusreport/article/49/1/1)
+
+#DATA PREPARATION
+For data preparation, I started by visiting the Insurance Institute for highway safety. Their website highlighted age groups where there was a  decrease in accidents. With this idea in mind, I created an age factor group by IIHS buckets. I also created various dummy variable such as KIDSDRIV_DUMMY indicating a 1 if true or zero if false. This operation was also performed for house ownership, masters degree, Ph.D. degree. Specific variables had missing values and were replaced with the median values. Additionally, currency columns were cleaned into numeric, and other variables were converted to factors. Due to high colinearity, certain variables were removed from the dataset.
+```{r}
+
+"KIDSDRIV will be converted into a dummy variable 1 has kids and 0 no driving kids"
+train_df$KIDSDRIV_Dummy = ifelse(train_df$KIDSDRIV==0,0,1)
+
+#The age seems to folow a normal dist 
+train_df$AGE[is.na(train_df$AGE)]= median(train_df$AGE,na.rm = TRUE)
+
+#Created age groups based on IIHS 
+train_df$AGE_CAT = ifelse(train_df$AGE>19,ifelse(train_df$AGE>24,ifelse(train_df$AGE>29,ifelse(train_df$AGE>34,ifelse(train_df$AGE>54,ifelse(train_df$AGE>59,ifelse(train_df$AGE>64,ifelse(train_df$AGE>69,ifelse(train_df$AGE>74,ifelse(train_df$AGE>79,"80+","75-79"),"70-74"),"65-69"),"60-64"),"55-59"),"35-54"),"30-34"),"25-29"),"20-24"),"16-19")
+
+
+train_df$AGE_CAT =factor(train_df$AGE_CAT,levels=c("16-19","20-24","25-29","30-34","35-54","55-59","60-64","65-69","70-74",	"75-79","80+"
+),ordered=TRUE)
+
+"convert variable kids at home into a dummy variable"
+train_df$HOMEKIDS_Dummy = ifelse(train_df$HOMEKIDS==0,0,1)
+
+train_df$AGE[is.na(train_df$AGE)]= median(train_df$AGE,na.rm = TRUE)
+
+train_df$YOJ[is.na(train_df$YOJ)]= median(train_df$YOJ,na.rm = TRUE)
+#train_df$YOJ[train_df$YOJ==0]= 0
+
+
+"cleans simbols from numeric variables"
+train_df$INCOME = as.numeric(gsub('\\$|,', '', train_df$INCOME))
+train_df$INCOME[is.na(train_df$INCOME)]= 0
+
+train_df$PARENT1 = factor(train_df$PARENT1)
+
+train_df$HOME_VAL = as.numeric(gsub('\\$|,', '', train_df$HOME_VAL))
+
+train_df$HOME_VAL[is.na(train_df$HOME_VAL)]= 0
+
+train_df$HASHOME_Dummy = ifelse(train_df$HOME_VAL==0,0,1)
+
+train_df$MSTATUS = factor(train_df$MSTATUS)
+
+train_df$SEX = factor(train_df$SEX)
+
+train_df$Masters_Dummy =ifelse(train_df$EDUCATION %in% c("Masters"), 1,0)
+
+train_df$PHD_Dummy =ifelse(train_df$EDUCATION %in% c("PhD"), 1,0)
+
+train_df$JOB[train_df$JOB==""]= "UNKNOWN"
+
+train_df$JOB = factor(train_df$JOB)
+
+train_df$CAR_USE = factor(train_df$CAR_USE)
+
+train_df$BLUEBOOK = as.numeric(gsub('\\$|,', '', train_df$BLUEBOOK))
+
+train_df$CAR_TYPE = factor(train_df$CAR_TYPE)
+
+train_df$RED_CAR = factor(train_df$RED_CAR)
+
+train_df$OLDCLAIM = as.numeric(gsub('\\$|,', '', train_df$OLDCLAIM))
+
+train_df$CLM_FREQ_Dummy = ifelse(train_df$CLM_FREQ==0,0,1)
+
+train_df$REVOKED = factor(train_df$REVOKED)
+
+train_df$URBANICITY = factor(train_df$URBANICITY)
+
+train_df$CAR_AGE[is.na(train_df$CAR_AGE)]= 0
+train_df$CAR_AGE[train_df$CAR_AGE==-3]= 3
+
+
+train_df = train_df %>% select(-KIDSDRIV,-HOMEKIDS,-CLM_FREQ,-HOME_VAL,-INDEX)
+
+train_df$TARGET_FLAG = factor(train_df$TARGET_FLAG)
+
+summary(train_df)
+```
+
+
+
+#DATA EXPLORATION
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::kable(round(describe(train_df,na.rm = TRUE),2), format = "latex", booktabs = T) %>% kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+\newpage
+
+There seems to be some high correlation between age and home kids, old claims and claim frequency, mvr pts and claim frequency, and car age and masters degree.
+
+```{r, echo=FALSE, fig.height=10, fig.width=10, message=FALSE, warning=FALSE}
+
+
+library("corrplot")
+cor_mx = cor(dplyr::select_if(train_df, is.numeric) ,use="pairwise.complete.obs", method = "pearson")
+corrplot(cor_mx, method = "color", 
+         type = "upper", order = "original", number.cex = .7,
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col = "black", tl.srt = 90, # Text label color and rotation
+                  # hide correlation coefficient on the principal diagonal
+         diag = TRUE)
+
+
+```
+
+\newpage
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library("PerformanceAnalytics")
+Numericcols = as.data.frame(select_if(train_df, is.numeric))
+
+chart.Correlation(Numericcols[,2:10])
+chart.Correlation(Numericcols[,11:ncol(Numericcols)])
+```
+
+
+
+\newpage
+
+
+#BUILD MODELS
+##SVM MOdel
+My first model is the SVMRadial model the model's accuracy is 97%, and the kappa is 92. 
+```{r}
+control = trainControl(method="repeatedcv", number=3, repeats=1)
+
+set.seed(7)
+modelSvm = train(TARGET_FLAG~., data=train_df, method="svmRadial", trControl=control)
+
+train_df$mypredictedSVM = predict(modelSvm,train_df)
+
+M1 =confusionMatrix(factor(train_df$mypredictedSVM),factor(train_df$TARGET_FLAG),dnn = c("Prediction", "Reference"))
+M1
+```
+
+##SVM MOdel BOXCOX
+My first model is the SVMRadial with a BoxCox transformation model the model's accuracy is 100%, and the kappa is 100. 
+```{r}
+control = trainControl(method="repeatedcv", number=3, repeats=1)
+
+set.seed(7)
+modelSvmBoxCox = train(TARGET_FLAG~., data=train_df, method="svmRadial", trControl=control,preProcess = "BoxCox")
+
+train_df$modelSvmBoxCox = predict(modelSvmBoxCox,train_df)
+
+M2= confusionMatrix(factor(train_df$modelSvmBoxCox),factor(train_df$TARGET_FLAG),dnn = c("Prediction", "Reference"))
+M2
+summary(modelSvmBoxCox)
+```
+
+
+
+##GBM
+The GBM model was quite attractive due to the 100% accuracy and an AUC of 1. I am not entirely confident if the results are accurate. The reason this model was selected over the GLM was due to its ability to handle factors within the model. I did not try tweaking the model due to its high kappa value.
+```{r}
+objControl = trainControl(method='repeatedcv', number=3, returnResamp='none', summaryFunction = twoClassSummary, classProbs = TRUE)
+
+train_df$TARGET_FLAG =ifelse(train_df$TARGET_FLAG==1,'ACDNT','noACDNT')
+train_df$TARGET_FLAG = as.factor(train_df$TARGET_FLAG)
+
+set.seed(7)
+modelgbm = train(TARGET_FLAG~., train_df, 
+                  method='gbm', 
+                  trControl=objControl,  
+                  metric = "ROC",
+                  preProc = c("center", "scale"))
+
+
+train_df$mypredictedGBM = predict(modelgbm,train_df, type='raw')
+
+trainPROBS = predict(modelgbm,train_df, type='prob')
+M3=confusionMatrix(factor(train_df$mypredictedGBM),factor(train_df$TARGET_FLAG),dnn = c("Prediction", "Reference"))
+
+M3
+
+MY_ROC(as.numeric(ifelse(train_df$TARGET_FLAG=="ACDNT",1,0)),trainPROBS$ACDNT,"Model2")
+
+roc(train_df$TARGET_FLAG,trainPROBS$ACDNT)
+
+
+```
+
+#Linear models
+##Model 1
+The first linear model I selected subsetted the data frame.  Many of the dummy variables became statistically significant. Variables that significantly increase claim price are travel time, revoked license, sports car, and claim frequency. Additionally, I scaled the variable but there was little difference noticed. The model was check for high colinearity and there was none, the adjusted r square is .045 the RMSE is 4582.52.
+```{r}
+control = trainControl(method="repeatedcv", number=3, repeats=1)
+#train_df$TARGET_FLAG = ifelse(train_df$TARGET_FLAG=="ACDNT",1,0)
+
+LM_df =train_df %>%  select(TARGET_AMT,AGE,YOJ,INCOME, TRAVTIME,BLUEBOOK,OLDCLAIM,MVR_PTS,CAR_AGE,KIDSDRIV_Dummy,HOMEKIDS_Dummy,HASHOME_Dummy,Masters_Dummy,PHD_Dummy,CLM_FREQ_Dummy,SEX,CAR_USE,CAR_TYPE,RED_CAR,REVOKED)
+
+
+set.seed(7)
+modelLM1 = train(TARGET_AMT~., data=LM_df %>% select(-AGE,-YOJ,-RED_CAR,-PHD_Dummy,-Masters_Dummy,-BLUEBOOK,-SEX) , method="lm", trControl=control)
+
+
+
+summary(modelLM1)
+car::vif(modelLM1$finalModel)
+modelLM1$results
+
+```
+
+
+##model 2
+The second model I selected all variables.variables. The variables were scaled and center the results were similar the first model with an adjusted r squared of .045 and RMSE of 4583.656. 
+```{r}
+control = trainControl(method="repeatedcv", number=3, repeats=1)
+
+set.seed(7)
+modelLM2 = train(TARGET_AMT~., data=LM_df , method="lm", trControl=control,preProcess = c("center", "scale"))
+
+#c("center", "scale")
+
+modelLM2$results
+
+summary(modelLM2)
+
+car::vif(modelLM2$finalModel)
+```
+
+
+#SELECT MODELS
+For the final model, i will choose model 1 for the binary logistic regression and model 1. I felt more confident using model1 in the binary logistic model. Model 3 was just perfect.
+
+For the linear regression, model1 seems like the right choice. The model uses fewer varibles it's statistically significant and has a sligly lower RMSE. 
+```{r, message=TRUE, warning=FALSE}
+
+Binary_df =data.frame(M1$byClass)
+Binary_df =cbind(Binary_df,M2$byClass)
+Binary_df =cbind(Binary_df,M3$byClass)
+colnames(Binary_df) = c("Model1","Model2","Model3")
+
+knitr::kable(Binary_df, format = "latex", booktabs = T) 
+#linear
+Linear_df = data.frame(modelLM1$results)
+Linear_df =rbind(Linear_df,modelLM2$results)
+row.names(Linear_df) = c("Model1","Model2")
+
+knitr::kable(Linear_df, format = "latex", booktabs = T) 
+
+
+
+```
+
+#Predictions
+##Test_df
+I applied all transformations from training df to the test data frame and predicted on the test data.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+"KIDSDRIV will be converted into a dummy variable 1 has kids and 0 no driving kids"
+test_df$KIDSDRIV_Dummy = ifelse(test_df$KIDSDRIV==0,0,1)
+
+#The age seems to folow a normal dist 
+test_df$AGE[is.na(test_df$AGE)]= median(test_df$AGE,na.rm = TRUE)
+
+#Created age groups based on IIHS 
+test_df$AGE_CAT = ifelse(test_df$AGE>19,ifelse(test_df$AGE>24,ifelse(test_df$AGE>29,ifelse(test_df$AGE>34,ifelse(test_df$AGE>54,ifelse(test_df$AGE>59,ifelse(test_df$AGE>64,ifelse(test_df$AGE>69,ifelse(test_df$AGE>74,ifelse(test_df$AGE>79,"80+","75-79"),"70-74"),"65-69"),"60-64"),"55-59"),"35-54"),"30-34"),"25-29"),"20-24"),"16-19")
+
+
+test_df$AGE_CAT =factor(test_df$AGE_CAT,levels=c("16-19","20-24","25-29","30-34","35-54","55-59","60-64","65-69","70-74",	"75-79","80+"
+),ordered=TRUE)
+
+"convert variable kids at home into a dummy variable"
+test_df$HOMEKIDS_Dummy = ifelse(test_df$HOMEKIDS==0,0,1)
+
+test_df$AGE[is.na(test_df$AGE)]= median(test_df$AGE,na.rm = TRUE)
+
+test_df$YOJ[is.na(test_df$YOJ)]= median(test_df$YOJ,na.rm = TRUE)
+#train_df$YOJ[train_df$YOJ==0]= 0
+
+
+"cleans simbols from numeric variables"
+test_df$INCOME = as.numeric(gsub('\\$|,', '', test_df$INCOME))
+test_df$INCOME[is.na(test_df$INCOME)]= 0
+
+test_df$PARENT1 = factor(test_df$PARENT1)
+
+test_df$HOME_VAL = as.numeric(gsub('\\$|,', '', test_df$HOME_VAL))
+
+test_df$HOME_VAL[is.na(test_df$HOME_VAL)]= 0
+
+test_df$HASHOME_Dummy = ifelse(test_df$HOME_VAL==0,0,1)
+
+test_df$MSTATUS = factor(test_df$MSTATUS)
+
+test_df$SEX = factor(test_df$SEX)
+
+test_df$Masters_Dummy =ifelse(test_df$EDUCATION %in% c("Masters"), 1,0)
+
+test_df$PHD_Dummy =ifelse(test_df$EDUCATION %in% c("PhD"), 1,0)
+
+test_df$JOB[test_df$JOB==""]= "UNKNOWN"
+
+test_df$JOB = factor(test_df$JOB)
+
+test_df$CAR_USE = factor(test_df$CAR_USE)
+
+test_df$BLUEBOOK = as.numeric(gsub('\\$|,', '', test_df$BLUEBOOK))
+
+test_df$CAR_TYPE = factor(test_df$CAR_TYPE)
+
+test_df$RED_CAR = factor(test_df$RED_CAR)
+
+test_df$OLDCLAIM = as.numeric(gsub('\\$|,', '', test_df$OLDCLAIM))
+
+test_df$CLM_FREQ_Dummy = ifelse(test_df$CLM_FREQ==0,0,1)
+
+test_df$REVOKED = factor(test_df$REVOKED)
+
+test_df$URBANICITY = factor(test_df$URBANICITY)
+
+test_df$CAR_AGE[is.na(test_df$CAR_AGE)]= 0
+test_df$CAR_AGE[test_df$CAR_AGE==-3]= 3
+
+
+test_df = test_df %>% select(-KIDSDRIV,-HOMEKIDS,-CLM_FREQ,-HOME_VAL,-INDEX)
+
+#test_df$TARGET_FLAG = factor(test_df$TARGET_FLAG)
+#test_df$TARGET_AMT = NULL
+#test_df$TARGET_FLAG = NULL
+
+test_df$TARGET_AMT=as.numeric(test_df$TARGET_AMT)
+test_df$TARGET_FLAG = as.factor(test_df$TARGET_FLAG)
+
+```
+
+##Final predictions
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+test_df$TARGET_AMT = predict(modelLM1,test_df)
+
+test_df$TARGET_FLAG = predict(modelSvm,test_df)
+
+test_df$TARGET_AMT = ifelse(test_df$TARGET_FLAG==0,0, test_df$TARGET_AMT)
+
+
+
+knitr::kable(head(test_df[1:2],10), format = "latex", booktabs = T) 
+
+write.csv(test_df[1:2],"predictions.csv")
+```
+
+
+[Data&Code](https://github.com/chrisestevez/DataAnalytics/tree/master/Data/Hw4)
+
+
+
