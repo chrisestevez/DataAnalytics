@@ -1,0 +1,188 @@
+---
+title: "Project 1 643"
+author: "Christopher Estevez"
+date: "June 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Libraries
+```{r message=FALSE, warning=FALSE}
+library("tidyverse")
+```
+
+* Briefly describe the recommender system that you're going to build out from a business perspective, e.g. "This system recommends data science books to readers."
+
+I will be using a movie genre from the small movie lens data set. The dataset contains 100,000 ratings by 700 users. I will search for top-rated genres and further reduce the dataset into a small user rating matrix.
+
+
+* Find a dataset, or build out your own toy dataset. As a minimum requirement for complexity, please include numeric ratings for at least five users, across at least five items, with some missing data.
+
+[Dataset Source](https://grouplens.org/datasets/movielens/)
+
+I will begin by loading the movies and ratings into the environment.
+```{r}
+movies = read.csv("Data/movies.csv", strip.white = T,stringsAsFactors = F)
+ratings = read.csv("Data/ratings.csv", strip.white = T,stringsAsFactors = F)
+
+Data = left_join(ratings, movies, by = "movieId")
+
+rm(movies,ratings)
+```
+
+I started searching for the top rated genres in the data set. Drama seems to be the most rated.
+```{r message=FALSE, warning=FALSE}
+knitr::kable(Data %>% select(genres) %>% group_by(genres) %>% summarise(Ratings_Count = n()) %>% arrange(desc(Ratings_Count)) %>% head(10), caption = "TOP 10 genres" ) 
+
+
+
+```
+
+Within the Drama, I selected the top 10 movies for use in my item rating matrix.
+```{r}
+top_drama_movies = Data %>% select(genres,title) %>% filter(genres=="Drama") %>% group_by(title) %>% summarise(Ratings_Count = n()) %>% arrange(desc(Ratings_Count)) %>% head(10)
+
+knitr::kable(top_drama_movies, caption = "TOP 10 Drama Movies" )
+
+
+```
+
+12 users were selected with the top rated movies.
+```{r}
+users = c(388,452,23,509,73,380,547,15,624,324,545,472)
+
+reduced_df = Data %>% select(userId,rating,title) %>% filter(title %in% top_drama_movies$title,userId %in% users)
+
+rm(top_drama_movies,users,Data)
+```
+
+* Load your data into (for example) an R or pandas dataframe, a Python dictionary or list of lists, (or another data structure of your choosing). From there, create a user-item matrix.
+
+The user-item matrix was created using tidyverse. The users are in the first column and movies across.
+```{r}
+
+
+knitr::kable(reduced_df %>% spread( key = title, value = rating))
+
+
+```
+
+* Break your ratings into separate training and test datasets.
+
+The training and test splits were eight training and four testing. Users with less rating were chosen for the testing set.
+```{r}
+test_users = c(545,547,624,472)
+
+train_df = reduced_df  %>% filter(!(userId %in% test_users))%>% spread( key = title, value = rating)
+
+test_df = reduced_df  %>% filter(userId %in% test_users)%>% spread( key = title, value = rating)
+
+rm(reduced_df,test_users)
+```
+
+
+* Using your training data, calculate the raw average (mean) rating for every user-item combination.
+```{r}
+train_avg = mean(as.matrix(train_df[,2:ncol(train_df)] ),na.rm = T)
+train_avg
+```
+
+* Calculate the RMSE for raw average for both your training data and your test data.
+```{r}
+RMSE = function(obs, pred) {
+    sqrt(mean((obs - pred)^2, na.rm=TRUE))
+}
+
+"RMSE for training df"
+train_RMSE = RMSE(as.matrix(train_df[,2:ncol(train_df)] ),train_avg)
+train_RMSE
+
+"RMSE for test df"
+test_RMSE=RMSE(as.matrix(test_df[,2:ncol(test_df)] ),train_avg)
+
+```
+
+* Using your training data, calculate the bias for each user and each item.
+```{r}
+user_bias_trn = rowMeans(as.matrix(train_df[,2:ncol(train_df)] ), na.rm = T) - train_avg
+
+knitr::kable(cbind(User = train_df$userId, user_bias_trn), caption = "User Bias Training df" )
+
+
+user_bias_tst = rowMeans(as.matrix(test_df[,2:ncol(test_df)]), na.rm = T) - train_avg
+
+knitr::kable(cbind(User = test_df$userId, user_bias_tst), caption = "User Bias Test df" )
+```
+
+```{r}
+item_bias_trn = colMeans(as.matrix(train_df[,2:ncol(train_df)] ), na.rm = T) - train_avg
+
+knitr::kable(cbind(item_bias_trn), caption = "Item Bias Training df" )
+
+item_bias_tst = colMeans(as.matrix(test_df[,2:ncol(test_df)]), na.rm = T) - train_avg
+
+knitr::kable(cbind(item_bias_tst), caption = "Item Bias Test df" )
+
+```
+
+* From the raw average, and the appropriate user and item biases, calculate the baseline predictors for every user-item combination.
+```{r}
+
+bline_pred = function(df,avg, uBias, iBias) {
+  movie_names = names(iBias)
+  user_ID = c(as.character(df$userId))
+  container_df = data.frame()
+  
+for (ub in uBias) {
+        Pred = avg + ub + iBias
+        container_df = rbind(container_df, Pred)
+  }
+  row.names(container_df) = user_ID
+  names(container_df) = movie_names
+  container_df
+}
+
+
+
+
+```
+
+```{r}
+train_bline_pred = bline_pred(train_df,train_avg,user_bias_trn,item_bias_trn)
+
+knitr::kable(train_bline_pred, caption = "Base Line Predictors Train df" )
+```
+
+```{r}
+test_bline_pred = bline_pred(test_df,train_avg,user_bias_tst,item_bias_tst)
+
+knitr::kable(test_bline_pred, caption = "Base Line Predictors Test df" )
+```
+
+* Calculate the RMSE for the baseline predictors for both your training data and your test data.
+```{r}
+"RMSE for train_bline_pred df"
+train_pred_RMSE =RMSE(as.matrix(train_bline_pred[,2:ncol(train_bline_pred)] ),train_avg)
+train_pred_RMSE
+
+"RMSE for test_bline_pred df"
+test_pred_RMSE =RMSE(as.matrix(test_bline_pred[,2:ncol(test_bline_pred)] ),train_avg)
+test_pred_RMSE
+```
+
+
+* Summarize your results.
+
+Overall the test set showed a 3 percent improvement. The training had a more substantial gain of 29 percent. There was some confusion when generating the RMSE for the predictors, and what to do with missing values, so the average was used. I think the low performance is due to how the users were selected and the small sample.
+```{r}
+data.frame(Train=c(train_RMSE,train_pred_RMSE,(1-train_pred_RMSE/train_RMSE)*100),Test =c(test_RMSE,test_pred_RMSE,(1-test_pred_RMSE/test_RMSE)*100),row.names =c("Raw RMSE","Predicted RMSE","Improvement"))
+
+
+```
+
+
+[Source](https://www.youtube.com/watch?v=lppNpLFelOc&list=PLuKhJYywjDe96T2L0-zXFU5Up2jqXlWI9&index=16)
+
