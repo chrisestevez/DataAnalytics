@@ -1,0 +1,164 @@
+---
+title: "Project 2 Data643"
+author: "Christopher Estevez"
+date: "June 19, 2018"
+output: 
+  html_document:
+    code_folding: show
+    highlight: zenburn
+    theme: lumen
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Libraries
+```{r message=FALSE, warning=FALSE}
+library("recommenderlab")
+library("ggplot2")
+```
+
+I will begin by loading the movies lense data-set from the recommender lab into the environment. I will also subset the data for movies have been rated by more than 50 user and films rated more than 100 times. 
+
+#Data
+```{r message=FALSE, warning=FALSE}
+data("MovieLense")
+ratings_movies = MovieLense[rowCounts(MovieLense)>50,colCounts(MovieLense)>100]
+```
+
+The movie rating distribution is right-skewed with the median of 
+```{r message=FALSE, warning=FALSE}
+quantile(colMeans(ratings_movies, na.rm = T), .5)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+movie_mean_rating = colMeans(ratings_movies, na.rm = T)
+
+qplot(movie_mean_rating) + ggtitle("Distribution of movie Ratings") 
+
+rm(movie_mean_rating)
+```
+
+The user rating distribution seems to somewhat normal with the median of 
+```{r message=FALSE, warning=FALSE}
+quantile(rowMeans(ratings_movies, na.rm = T), .5)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+user_mean_rating = rowMeans(ratings_movies, na.rm = T)
+qplot(user_mean_rating) + ggtitle("Distribution of User Ratings")
+
+rm(user_mean_rating)
+```
+
+
+A heat map of the first 100 users and movies reveals sparsity, but also some very active users.
+```{r message=FALSE, warning=FALSE}
+image(ratings_movies[1:100,1:100], main="Heatmap First 100 Users & movies")
+
+```
+
+To create a train and test set an evaluation scheme is needed. The function takes the rating data. The data will be split 80% train and 20% test.
+```{r message=FALSE, warning=FALSE}
+set.seed(143)
+eval_sets = evaluationScheme(data =ratings_movies,method ="cross-validation",train=.8,given=15,goodRating=3,k=10)
+
+rm(MovieLense,MovieLenseMeta,ratings_movies)
+```
+
+#IBCF
+##IBCF Model 1
+
+The first model is an Item Base collaborative filtering model. The data will be normalized using centering. The distance measurement used is cosine. The models will be evaluated using the unknown data set and stored in a data frame for comparison to other models. Finally, the top predictions for the model will be printed.
+```{r message=FALSE, warning=FALSE}
+
+IBCF_cosine_model = Recommender(data=getData(eval_sets,"train"),method ="IBCF",parameter=list( normalize = "center", method="cosine"))
+
+pred_IBCF_cos = predict(object =IBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats =data.frame(IBCF_cosine_model=calcPredictionAccuracy(x=pred_IBCF_cos,data=getData(eval_sets,"unknown")))
+
+pred_IBCF_cos_top = predict(object =IBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_IBCF_cos_top@itemLabels[pred_IBCF_cos_top@items[[1]]]
+
+
+rm(IBCF_cosine_model,pred_IBCF_cos,pred_IBCF_cos_top)
+```
+
+##IBCF Model 2
+
+IBCF model 2 uses Pearson distance measurement otherwise it is similar to IBCF model one.
+```{r message=FALSE, warning=FALSE}
+IBCF_pearson_model = Recommender(data=getData(eval_sets,"train"),method ="IBCF",parameter=list( normalize = "center", method="pearson"))
+
+pred_IBCF_pear = predict(object =IBCF_pearson_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$IBCF_pearson_model= cbind( calcPredictionAccuracy(x=pred_IBCF_pear,data=getData(eval_sets,"unknown")))
+
+pred_IBCF_pear_top = predict(object =IBCF_pearson_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_IBCF_pear_top@itemLabels[pred_IBCF_pear_top@items[[1]]]
+
+rm(IBCF_pearson_model,pred_IBCF_pear,pred_IBCF_pear_top)
+```
+
+#UBCF
+##UBCF Model 1
+
+The user base collaborative filtering model will use the same methodology implemented earlier. The model will be normalization using centering and the distance measurement used is cosine.
+```{r message=FALSE, warning=FALSE}
+
+
+UBCF_cosine_model = Recommender(data=getData(eval_sets,"train"),method ="UBCF",parameter=list( normalize = "center", method="cosine"))
+
+pred_UBCF_cos = predict(object =UBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$UBCF_cosine_model= cbind( calcPredictionAccuracy(x=pred_UBCF_cos,data=getData(eval_sets,"unknown")))
+
+pred_UBCF_cos_top = predict(object =UBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_UBCF_cos_top@itemLabels[pred_UBCF_cos_top@items[[1]]]
+
+rm(UBCF_cosine_model,pred_UBCF_cos,pred_UBCF_cos_top)
+```
+##UBCF Model 2
+
+UBCF model 2 will use Z-score normalization technique and a distance measurement of Pearson. 
+```{r message=FALSE, warning=FALSE}
+
+
+UBCF_pearson_modelz = Recommender(data=getData(eval_sets,"train"),method ="UBCF",parameter=list( normalize = "Z-score", method="pearson"))
+
+pred_UBCF_pear = predict(object =UBCF_pearson_modelz,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$UBCF_pearson_modelz= cbind( calcPredictionAccuracy(x=pred_UBCF_pear,data=getData(eval_sets,"unknown")))
+
+pred_UBCF_pear_top = predict(object =UBCF_pearson_modelz,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_UBCF_pear_top@itemLabels[pred_UBCF_pear_top@items[[1]]]
+
+rm(UBCF_pearson_modelz,pred_UBCF_pear,pred_UBCF_pear_top,eval_sets)
+```
+
+# Conslusions
+
+After evaluating all four models, the user based collaborative filtering models performed better than IBCF using RMSE. In my next build, I would like to search techniques that allow me to evaluate multiple models using ROC/AUC, and implementations of hybrid methods for collaborative filtering.
+```{r message=FALSE, warning=FALSE}
+knitr::kable(model_stats,caption="Model Statistics")
+
+rm(model_stats)
+```
+
+
+## Sources
+[R Bloggers](https://www.r-bloggers.com/recommender-systems-101-a-step-by-step-practical-example-in-r/)
+
+[Stack Overflow](https://stackoverflow.com/questions/26207850/create-sparse-matrix-from-a-data-frame)
+
+[Predicting Ratings](+https://ashokharnal.wordpress.com/2014/12/18/using-recommenderlab-for-predicting-ratings-for-movielens-data/)
