@@ -1,0 +1,156 @@
+---
+title: "Project 3 Data643"
+author: "Christopher Estevez"
+date: "June 25, 2018"
+output: 
+  html_document:
+    code_folding: show
+    highlight: zenburn
+    theme: lumen
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Assignment Description
+
+The goal of this assignment is give you practice working with Matrix Factorization techniques.
+
+Your task is implement a matrix factorization method-such as singular value decomposition (SVD) or Alternating Least Squares (ALS)-in the context of a recommender system.
+
+You may approach this assignment in a number of ways. You are welcome to start with an existing recommender system written by yourself or someone else. Remember as always to cite your sources, so that you can be graded on what you added, not what you found.
+SVD can be thought of as a pre-processing step for feature engineering. You might easily start with thousands or millions of items, and use SVD to create a much smaller set of "k" items (e.g. 20 or 70).
+
+## Notes/Limitations:
+
+* SVD builds features that may or may not map neatly to items (such as movie genres or news topics). As in many areas of machine learning, the lack of explainability can be an issue).
+
+* SVD requires that there are no missing values. There are various ways to handle this, including (1) imputation of missing values, (2) mean-centering values around 0, or (3) <advanced> using a more advance technique, such as stochastic gradient descent to simulate SVD in populating the factored matrices.
+
+* Calculating the SVD matrices can be computationally expensive, although calculating ratings once the factorization is completed is very fast. You may need to create a subset of your data for SVD calculations to be successfully performed, especially on a machine with a small RAM footprint.
+
+
+#Libraries
+```{r message=FALSE, warning=FALSE}
+library("tidyverse")
+```
+
+
+#Data
+
+[Dataset Source](https://grouplens.org/datasets/movielens/)
+
+I will begin by loading the movies and ratings into the environment. I only used the Thriller genre of the movielens data set. The data contains 321 users that rated 75 Thriller movies. The Data set is very sparse.
+```{r message=FALSE, warning=FALSE}
+movies = read.csv("Data/movies.csv", strip.white = T,stringsAsFactors = F)
+ratings = read.csv("Data/ratings.csv", strip.white = T,stringsAsFactors = F)
+
+Data = left_join(ratings, movies, by = "movieId")%>% filter(genres=="Thriller")%>% select(userId,rating,title) %>% spread( key = title, value = rating)
+
+dim(Data)
+
+rm(movies,ratings)
+```
+
+Calculating the sparsity of the movie yields a 95%.
+```{r message=FALSE, warning=FALSE}
+sum(is.na(Data))/prod(dim(Data))
+```
+
+I initiate the calculation of means to predict in future steps. I initially scaled the data but reversed the decision due to not knowing a reversal method to extract the real rating value. 
+```{r message=FALSE, warning=FALSE}
+user_means = rowMeans(Data[,2:ncol(Data)],na.rm = T)
+movie_mean = colMeans(Data[,2:ncol(Data)],na.rm = T)
+total_mean = mean(as.matrix(Data[,2:ncol(Data)]),na.rm = T)
+
+
+#DataScaled = data.frame(scale(as.matrix(Data[,2:ncol(Data)]), 
+#                                center=T, 
+ #                               scale=T))
+```
+
+#SVD Base
+
+The first step below is to make a copy of the initial data set to reference it when applying predictions. I also set the NA values in the data set to zero to avoid errors when calling the SVD function. Later the components of the SVD results are given a variable name and values are predicted and saved in pred_base_svd. IN the final stages column names and user ID is assigned to the data frame.
+```{r message=FALSE, warning=FALSE}
+Data_original = Data
+Data[is.na(Data)] = 0
+
+set.seed(143)
+my_svd = svd(Data[,2:ncol(Data)],nu = 3,nv = 3)
+
+U = my_svd$u
+V = my_svd$v
+D = my_svd$d
+S = diag(D[1:3])
+
+set.seed(143)
+pred_base_svd = data.frame(user_means + (U %*% sqrt(S)) %*% (sqrt(S) %*% t(V)))
+pred_base_svd[pred_base_svd>5]=5
+pred_base_svd[pred_base_svd<0]=0
+
+colnames(pred_base_svd) = colnames(Data[2:ncol(Data)])
+
+pred_base_svd$userId = Data$userId
+
+```
+
+
+#RMSE
+
+The RMSE formula yields a 1.164576 which is not very bad, but considering the lack of ratings in the sample data, it's alright for now.
+```{r message=FALSE, warning=FALSE}
+rmse = function(preds,original){
+  sqrt(mean((preds-original)^2,na.rm = T))
+}
+
+rmse_pred =pred_base_svd
+rmse_ori = Data_original
+rmse_pred$userId =NULL
+rmse_ori$userId = NULL
+
+
+set.seed(143)
+rmse(rmse_pred,rmse_ori)
+
+rm(rmse_pred,rmse_ori)
+```
+
+Top Ratings
+
+Here I selected a user, filtered out movies already rated by this user and printed their top 5 recommendations based on SVD decomposition.
+```{r message=FALSE, warning=FALSE}
+not_rated = is.na(Data_original[,2:ncol(Data_original)])
+
+rownames(not_rated) = Data_original$userId
+
+user_ID_15 = as.data.frame(pred_base_svd[pred_base_svd$userId==15,])
+
+user_pred =data.frame(user_ID_15[not_rated[6,]])
+user_pred =as.data.frame( t(user_pred))
+colnames(user_pred)=c("UserID_15")
+
+
+user_pred= user_pred %>%mutate(Movie=rownames(user_pred)) %>%  arrange(desc(UserID_15))
+
+knitr::kable(head(user_pred ,5))
+
+```
+
+#Conclusion
+
+This assignment was exciting because of the SVD implementation used in a real scenario. I did not have time to implement other matrix decomposition techniques due to time constraints, but I will further employ ALS factorizations to see the time comparison vs. the SVD implementation.
+
+
+## Sources
+
+
+[Dataset Source](https://grouplens.org/datasets/movielens/)
+
+[Scaling](https://stat.ethz.ch/R-manual/R-devel/library/base/html/scale.html)
+
+[SVD Tutorial](https://www.r-bloggers.com/singular-value-decomposition-svd-tutorial-using-examples-in-r/)
+
+[David Stern](https://www.youtube.com/watch?v=3y_0-v9w_kY)
