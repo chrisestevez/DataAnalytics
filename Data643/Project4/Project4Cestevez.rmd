@@ -1,0 +1,249 @@
+---
+title: "Project 4 Data643"
+author: "Christopher Estevez"
+date: "June 30, 2018"
+output: 
+  html_document:
+    code_folding: show
+    highlight: zenburn
+    theme: lumen
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Libraries
+```{r message=FALSE, warning=FALSE}
+library("recommenderlab")
+library("ggplot2")
+```
+
+I will begin by loading the movies lense data-set from the recommender lab into the environment. I will also subset the data for movies have been rated by more than 50 user and films rated more than 100 times. 
+
+#Data
+```{r message=FALSE, warning=FALSE}
+data("MovieLense")
+ratings_movies = MovieLense[rowCounts(MovieLense)>50,colCounts(MovieLense)>100]
+```
+
+The movie rating distribution is right-skewed with the median of 
+```{r message=FALSE, warning=FALSE}
+quantile(colMeans(ratings_movies, na.rm = T), .5)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+movie_mean_rating = colMeans(ratings_movies, na.rm = T)
+
+qplot(movie_mean_rating) + ggtitle("Distribution of movie Ratings") 
+
+rm(movie_mean_rating)
+```
+
+The user rating distribution seems to somewhat normal with the median of 
+```{r message=FALSE, warning=FALSE}
+quantile(rowMeans(ratings_movies, na.rm = T), .5)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+user_mean_rating = rowMeans(ratings_movies, na.rm = T)
+qplot(user_mean_rating) + ggtitle("Distribution of User Ratings")
+
+rm(user_mean_rating)
+```
+
+
+A heat map of the first 100 users and movies reveals sparsity, but also some very active users.
+```{r message=FALSE, warning=FALSE}
+image(ratings_movies[1:100,1:100], main="Heatmap First 100 Users & movies")
+
+```
+
+To create a train and test set an evaluation scheme is needed. The function takes the rating data. The data will be split 80% train and 20% test.
+```{r message=FALSE, warning=FALSE}
+set.seed(143)
+eval_sets = evaluationScheme(data =ratings_movies,method ="cross-validation",train=.8,given=15,goodRating=3,k=5)
+
+rm(MovieLense,MovieLenseMeta,ratings_movies)
+```
+
+#IBCF
+##IBCF Model 1
+
+The first model is an Item Base collaborative filtering model. The data will be normalized using centering. The distance measurement used is cosine. The models will be evaluated using the unknown data set and stored in a data frame for comparison to other models. Finally, the top predictions for the model will be printed.
+```{r message=FALSE, warning=FALSE}
+
+IBCF_cosine_model = Recommender(data=getData(eval_sets,"train"),method ="IBCF",parameter=list( normalize = "center", method="cosine"))
+
+pred_IBCF_cos = predict(object =IBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats =data.frame(IBCF_cosine_model=calcPredictionAccuracy(x=pred_IBCF_cos,data=getData(eval_sets,"unknown")))
+
+pred_IBCF_cos_top = predict(object =IBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_IBCF_cos_top@itemLabels[pred_IBCF_cos_top@items[[1]]]
+
+
+rm(IBCF_cosine_model,pred_IBCF_cos,pred_IBCF_cos_top)
+```
+
+##IBCF Model 2
+
+IBCF model 2 uses Pearson distance measurement otherwise it is similar to IBCF model one.
+```{r message=FALSE, warning=FALSE}
+IBCF_pearson_model = Recommender(data=getData(eval_sets,"train"),method ="IBCF",parameter=list( normalize = "center", method="pearson"))
+
+pred_IBCF_pear = predict(object =IBCF_pearson_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$IBCF_pearson_model= cbind( calcPredictionAccuracy(x=pred_IBCF_pear,data=getData(eval_sets,"unknown")))
+
+pred_IBCF_pear_top = predict(object =IBCF_pearson_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_IBCF_pear_top@itemLabels[pred_IBCF_pear_top@items[[1]]]
+
+rm(IBCF_pearson_model,pred_IBCF_pear,pred_IBCF_pear_top)
+```
+
+#UBCF
+##UBCF Model 1
+
+The user base collaborative filtering model will use the same methodology implemented earlier. The model will be normalization using centering and the distance measurement used is cosine.
+```{r message=FALSE, warning=FALSE}
+
+
+UBCF_cosine_model = Recommender(data=getData(eval_sets,"train"),method ="UBCF",parameter=list( normalize = "center", method="cosine"))
+
+pred_UBCF_cos = predict(object =UBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$UBCF_cosine_model= cbind( calcPredictionAccuracy(x=pred_UBCF_cos,data=getData(eval_sets,"unknown")))
+
+pred_UBCF_cos_top = predict(object =UBCF_cosine_model,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_UBCF_cos_top@itemLabels[pred_UBCF_cos_top@items[[1]]]
+
+rm(UBCF_cosine_model,pred_UBCF_cos,pred_UBCF_cos_top)
+```
+##UBCF Model 2
+
+UBCF model 2 will use Z-score normalization technique and a distance measurement of Pearson. 
+```{r message=FALSE, warning=FALSE}
+
+
+UBCF_pearson_modelz = Recommender(data=getData(eval_sets,"train"),method ="UBCF",parameter=list( normalize = "Z-score", method="pearson"))
+
+pred_UBCF_pear = predict(object =UBCF_pearson_modelz,newdata=getData(eval_sets,"known"),n=10,type="ratings")
+
+model_stats$UBCF_pearson_modelz= cbind( calcPredictionAccuracy(x=pred_UBCF_pear,data=getData(eval_sets,"unknown")))
+
+pred_UBCF_pear_top = predict(object =UBCF_pearson_modelz,newdata=getData(eval_sets,"known"),n=10,type="topNList")
+
+pred_UBCF_pear_top@itemLabels[pred_UBCF_pear_top@items[[1]]]
+
+rm(UBCF_pearson_modelz,pred_UBCF_pear,pred_UBCF_pear_top)
+```
+
+# Conslusions proj2
+
+After evaluating all four models, the user based collaborative filtering models performed better than IBCF using RMSE. In my next build, I would like to search techniques that allow me to evaluate multiple models using ROC/AUC, and implementations of hybrid methods for collaborative filtering.
+```{r message=FALSE, warning=FALSE}
+knitr::kable(model_stats,caption="Model Statistics")
+
+rm(model_stats)
+```
+
+
+#Project 4
+
+I will start by creating the models I would like to evaluate. Seven models will be evaluated and plotted. After model evaluation metrics will be plotted and evaluated.
+
+```{r}
+evaluation_models = list(
+  IBCF_cos = list(name = "IBCF", param = list(method = "cosine")),
+  IBCF_pea = list(name = "IBCF", param = list(method = "pearson")),
+  IBCF_cos_ctr = list(name = "IBCF", param = list(normalize = "center",method = "cosine")),
+  UBCF_cos = list(name = "UBCF", param = list(method = "cosine")),
+  UBCF_pea = list(name = "UBCF", param = list(method = "pearson")),
+  UBCF_pea_Z = list(name = "UBCF", param = list(normalize = "Z-score",method = "pearson")),
+  random = list(name = "RANDOM", param=NULL)
+)
+
+n_recommendations = c(1, 3, 5, 10, 15, 25, 40,50,60,70,80,90,100)
+
+results = evaluate(x = eval_sets,
+                    method = evaluation_models,
+                    n = n_recommendations)
+```
+
+
+After running the recommendation models, it is possible to extract performance measures which I have named eval_metrics. I will create more measures from the underlying metric data. These measures are Accuracy, sensitivity, and F1Score. The F1 score is a measure of a test's accuracy by considering precision and recall. A zero F score indicates bad precision and recall. 
+
+$$Accuracy=\frac{TP+TN}{TP+FP+TN+FN}$$
+
+```{r}
+eval_metrics = as.data.frame(getConfusionMatrix(results[["UBCF_cos"]])[[1]][,1:8])
+
+eval_metrics$Accuracy = (eval_metrics$TP+eval_metrics$TN)/(eval_metrics$TP+eval_metrics$FP+eval_metrics$TN+eval_metrics$FN)
+```
+
+$$Sensitivity=\frac{TP}{TP+FN}$$
+
+```{r}
+eval_metrics$Sensitivity = eval_metrics$TP/(eval_metrics$TP+eval_metrics$FN)
+```
+
+$$F1 Score=\frac{2*Precision*Sensitivity}{Precision+Sensitivity}$$
+```{r}
+
+eval_metrics$F1Score = (2*eval_metrics$precision*eval_metrics$Sensitivity)/(eval_metrics$precision+eval_metrics$Sensitivity)
+
+
+knitr::kable(eval_metrics)
+```
+
+
+
+
+```{r}
+plot(results, annotate=1, legend = "bottomright") 
+title("ROC curve")
+```
+```{r}
+plot(results, "prec/rec", annotate = 1, legend = "topright")
+title("Precision Recall")
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+results_ratings = evaluate(x = eval_sets, 
+               method = evaluation_models, 
+               type="ratings")
+
+
+table =  as.data.frame( t(sapply(avg(results_ratings), rbind)))
+colnames(table) = c("RMSE", "MSE", "MAE")
+knitr::kable(table)
+```
+
+#Summary
+
+Based on the prior exercises various Item and user recommendation models where built. The new approach allowed the evaluating of many models with a more simplified workflow. 
+
+The best model based on AUC was the UBCF with cosine similarity. The model also yielded the lowest RMSE of .97. To increase serendipity in the model evaluation, I would generate a random selection from one of the favorite user genre.
+Analyzing performance with offline data can be trivial, but if the system were online, we could undoubtedly separate a portion of the user base into an A/B testing and compare the results. Also, consideration of the system's resources must be tested before implementation.
+
+
+
+## Sources
+[R Bloggers](https://www.r-bloggers.com/recommender-systems-101-a-step-by-step-practical-example-in-r/)
+
+[Stack Overflow](https://stackoverflow.com/questions/26207850/create-sparse-matrix-from-a-data-frame)
+
+[Predicting Ratings](+https://ashokharnal.wordpress.com/2014/12/18/using-recommenderlab-for-predicting-ratings-for-movielens-data/)
+
+[Movie Recommender System](http://datamining-r.blogspot.com/2014/09/movie-recommender-system-in-r.html)
