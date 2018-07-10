@@ -1,0 +1,121 @@
+
+---
+title: "Project5"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+For project 5 I implemented a recommendation system using Apache Spark, R and Alternative Least Squares. The purpose of the project is to have exposure working in a distributed environment.
+```
+
+
+```{r}
+#if (!require('tidyverse')) install.packages('tidyverse')
+#if (!require('sparklyr')) install.packages('sparklyr')
+library(sparklyr)
+#library(tidyverse)
+library(dplyr)
+
+```
+
+
+```{r}
+movies = read.csv("https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Data643/Project5/Data/movies.csv", strip.white = T,stringsAsFactors = F)
+ratings = read.csv("https://raw.githubusercontent.com/chrisestevez/DataAnalytics/master/Data643/Project5/Data/ratings.csv", strip.white = T,stringsAsFactors = F)
+
+ratings = left_join(ratings, movies, by = "movieId")
+```
+
+
+```{r}
+user_ratings = ratings%>% select(userId,movieId,rating,title,genres)
+head(user_ratings,10)
+```
+
+
+```{r}
+sc <- spark_connect(method = "databricks")
+#sparkR.session()
+```
+
+
+```{r}
+# loding data to a spark table
+movie_table = sdf_copy_to(sc,user_ratings, overwrite = TRUE)
+```
+
+
+```{r}
+head(movie_table,10)
+```
+
+
+```{r}
+model = ml_als_factorization(movie_table, rating.column = "rating", 
+                              user.column = "userId",
+                              item.column = "movieId",regParam = 0.01
+                              )
+```
+
+
+```{r}
+summary(model)
+```
+
+
+```{r}
+prediction = collect(sdf_predict(model, movie_table))
+
+```
+
+
+```{r}
+head(prediction,10)
+
+```
+
+
+```{r}
+prediction[prediction > 5] = 5
+prediction[prediction < 1] = 1
+```
+
+
+```{r}
+sqrt(mean((prediction$rating - prediction$prediction)^2))
+```
+
+
+```{r}
+hist(prediction$prediction,25)
+```
+
+
+```{r}
+thriller_preds = data.frame(prediction[prediction$genres=="Thriller",])
+
+```
+
+
+```{r}
+head(thriller_preds,10)
+```
+
+
+```{r}
+sqrt(mean((thriller_preds$rating - thriller_preds$prediction)^2))
+```
+
+
+```{r}
+
+The process of creating a recommendation system based on Alternative Least Square(ALS) and spark was very fast when compared to the manual implementation method. The spark instance made the data manipulation easy. The system ran the full 100,004 ratings from various movies. In the standard implementation, the local R session took a lot of time and resources to complete.
+
+In project three the RMSE statistics was 1.164576, and in the current spark version, the RMSE of the whole data set is 0.6106768 and for just the Thriller genre was .0.5645529. The results are surprising considering it is an RMSE reduction of 50% compared to the SVD method used in project 3.
+
+The point where it makes sense to implement a Spark distributed system is when analyzing big data sets that would otherwise take lots of resources for a single computer to accomplish.
+```
+
