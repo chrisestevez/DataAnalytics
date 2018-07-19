@@ -1,0 +1,285 @@
+---
+title: "Final Data643"
+author: "Christopher Estevez"
+date: "July 19, 2018"
+output: 
+  html_document:
+    code_folding: show
+    highlight: zenburn
+    theme: lumen
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Intro
+
+For the final project, I used the Last.fm dataset obtained from grouplens.org. The dataset contains various aspects of a users listening experiences such as listen count, artist, and tag words.
+
+#Libraries
+
+The primary packages used within this project are sparklyr, dplyr, plotly, and DT for table manipulations. The spark node is using a custom configuration, and it is being executed within a local environment.
+```{r message=FALSE, warning=FALSE}
+#ver2.3.0
+library("sparklyr")
+library("dplyr")
+library("plotly")
+library("DT")
+
+my_config = spark_config()
+my_config$`sparklyr.shell.driver-memory` = "5G"
+my_config$`sparklyr.shell.executor-memory` = "5G"
+my_config$`sparklyr.cores.local`=9
+
+
+sc = spark_connect(master = "local", version = "2.3.0",config = my_config)
+spark_connection_is_open(sc)
+```
+
+#Loading Ratings Data
+
+The first significant step is loading the data. The data is stored locally and is tab separated. Additionally, we can see the distribution of the listening column that is highly skewed.
+```{r message=FALSE, warning=FALSE}
+user_artists = read.csv("C:/Users/OmegaCel/Documents/MasterDataAnalytics/643Recomender Sys/Summer2018/Project6Final/Data/lastfm/user_artists.dat", strip.white = T,stringsAsFactors = F,sep = "\t")
+
+
+par(mfrow=c(1,2))
+hist(as.numeric(user_artists$weight),1000,xlim = c(1,10000),main = "Listening Weight Distribution",xlab = "")
+hist(log(user_artists$weight),25,main = "Log of Listening Weight",xlab = "")
+
+```
+
+The listening weights were transformed into a rating score that is proportional to the weights. For example, listen of one would be transformed into a one-star rating.
+```{r message=FALSE, warning=FALSE}
+user_artists$Rating = cut(user_artists$weight,breaks = c(quantile(user_artists$weight, probs = seq(0, 1, by = 0.20))),labels = c (1:5),included.lowest= T,ordered_result=T)
+
+user_artists$Rating[is.na(user_artists$Rating)]=1
+
+user_artists$Rating= as.numeric(user_artists$Rating)
+
+```
+
+
+The below code combines the remaining datasets and extracts features from the columns. Finally, the data is stored in a CSV file.
+```{r message=FALSE, warning=FALSE}
+
+user_taggedartists = read.csv("C:/Users/OmegaCel/Documents/MasterDataAnalytics/643Recomender Sys/Summer2018/Project6Final/Data/lastfm/user_taggedartists.dat", strip.white = T,stringsAsFactors = F,sep = "\t")
+
+tags = read.csv("C:/Users/OmegaCel/Documents/MasterDataAnalytics/643Recomender Sys/Summer2018/Project6Final/Data/lastfm/tags.dat", strip.white = T,stringsAsFactors = F,sep = "\t")
+
+#need
+artist_tags = user_taggedartists %>% select(userID,artistID,tagID) %>%  left_join(tags , by = "tagID") %>% select(artistID,tagValue) %>% group_by(artistID) %>% summarise(tags= toString(tagValue)) %>%
+  ungroup()
+
+artist_tags$tags= gsub(",", ";", artist_tags$tags)
+
+artists = read.csv("C:/Users/OmegaCel/Documents/MasterDataAnalytics/643Recomender Sys/Summer2018/Project6Final/Data/lastfm/artists.csv", strip.white = T,stringsAsFactors = F,sep = ",")
+
+
+user_artists = user_artists %>% left_join(artists , by = c("artistID" = "id")) %>%left_join(artist_tags , by = c("artistID" = "artistID"))
+
+user_artists$tags = tolower(user_artists$tags)
+
+user_artists$Rock =ifelse(grepl("rock", user_artists$tags)==TRUE,1,0)
+user_artists$POP =ifelse(grepl("pop", user_artists$tags)==TRUE,1,0)
+user_artists$Electronic =ifelse(grepl("electronic|electronic dance music", user_artists$tags)==TRUE,1,0)
+user_artists$Jazz =ifelse(grepl("jazz", user_artists$tags)==TRUE,1,0)
+user_artists$HipHop =ifelse(grepl("hip-hop", user_artists$tags)==TRUE,1,0)
+
+#user_artists=user_artists %>% select(-weight)
+
+#write.csv(user_artists,"user_artistsFinalv2.csv",row.names = FALSE)
+
+summary(user_artists)
+rm(user_taggedartists,tags,artist_tags,artists)
+```
+
+# Top Artist
+Plotting the top 15 artists identifies Britney Spears, Depeche Mode, and Lady Gaga as the top artist listened by the users.
+```{r message=FALSE, warning=FALSE}
+
+user_artists %>% select(name,weight) %>% group_by(name) %>% summarise(Total_PLays= sum(weight)) %>%top_n(15)  %>% plot_ly(x = ~name, y = ~Total_PLays, type = 'bar') %>% config(showLink=F,collaborate = F,displaylogo=F) %>% layout(margin = list( b = 100,r=50),title  = 'Top 15 most listened artist',xaxis = list(title = "Artist"))
+
+```
+
+#Load data to spark
+
+Due to spark inability to load the data frame directly an alternative method was used,the data was loaded from the CSV file created earlier.
+```{r message=FALSE, warning=FALSE}
+
+#spark_user_artists = sdf_copy_to(sc,user_artists, overwrite = TRUE)
+
+spark_user_artists = spark_read_csv(sc, "spark_user_artists", "C:/Users/OmegaCel/Documents/MasterDataAnalytics/643Recomender Sys/Summer2018/Project6Final/user_artistsFinalv2.csv",delimiter = ",", header = TRUE,columns = list(userID = "integer",artistID = "integer",Rating = "integer",name="character",url="character",pictureURL="character",tags="character",Rock="integer",POP="integer",Electronic="integer",Jazz="integer",HipHop="integer"),infer_schema = FALSE,charset = "UTF-8", null_value = NULL,repartition = 0, memory = TRUE, overwrite = TRUE)
+
+```
+
+## Confirm Spark table
+```{r message=FALSE, warning=FALSE}
+src_tbls(sc)
+```
+
+
+#ALS Model
+
+The first Alternative Least Square model constituted of the entire data set and was based on the rating, user, and artist. The model uses a regularization parameter of .1 to avoid overfitting, and it is run five times.
+```{r message=FALSE, warning=FALSE}
+model = ml_als_factorization(spark_user_artists,rating_col ="Rating",user_col ="userID",item_col="artistID",regularization.parameter = 0.1,iter.max = 5)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+summary(model)
+```
+
+Here the predictions are collected from spark to analyze the results further.
+```{r message=FALSE, warning=FALSE}
+prediction =collect(sdf_predict(spark_user_artists, model))
+```
+
+The predictions are adjusted to avoid negative or values over 5. Furthermore, the results are of the predictions are displayed in the searchable table below.
+```{r message=FALSE, warning=FALSE}
+prediction$prediction =ifelse(prediction$prediction > 5.0,5,prediction$prediction)
+
+prediction$prediction =ifelse(prediction$prediction < 1.0,1,prediction$prediction)
+
+prediction %>% select(userID,name,prediction) %>% mutate(prediction=round(prediction,2)) %>%datatable( colnames = c('USER', 'ARTIST', 'PREDICTION'),options = list(pageLength = 10,columnDefs = list(list(className = 'dt-center', targets="_all"))),rownames = FALSE)
+```
+
+
+
+The RMSE for the overall model is:
+```{r message=FALSE, warning=FALSE}
+Model_one_RMSE = sqrt(mean((prediction$Rating -prediction$prediction)^2))
+Model_one_RMSE
+```
+
+
+```{r}
+hist(prediction$prediction,25,xlab = "",main = "Prediction Histogram")
+```
+
+After various transformations, we will recommend the top 5 artists for each user and display the results in a table.
+```{r message=FALSE, warning=FALSE}
+results =ml_recommend(model, type = c("items", "users"), n = 5)
+
+results= as.data.frame(results)
+
+artist_name =user_artists %>% select(artistID,name) %>% group_by(artistID,name) %>% summarise(t=n()) %>% select(-t)
+ 
+results %>% left_join(artist_name,by = c("artistID" = "artistID")) %>% select(userID,name,rating) %>% mutate(rating=round(rating,2))%>%datatable( colnames = c('USER', 'ARTIST', 'RATING'),options = list(pageLength = 10,columnDefs = list(list(className = 'dt-center', targets="_all"))),rownames = FALSE)
+```
+
+Two more models will be built using the ALS function. The first an ALS model using a test and training data set and the second using implicit preference.
+```{r message=FALSE, warning=FALSE}
+
+partitions = spark_user_artists %>%  sdf_partition(training = 0.70, test = 0.30, seed = 143)
+
+train = partitions$training
+test = partitions$test
+
+```
+
+#Model 2
+
+Model two is the same as the first model but uses a training and test set. The model will also use a cold start drop item should there be no similar item to recommend.
+```{r message=FALSE, warning=FALSE}
+model_two = ml_als_factorization(train,rating_col ="Rating",user_col ="userID",item_col="artistID",regularization.parameter = 0.1,iter.max = 5,cold_start_strategy="drop")
+```
+
+```{r message=FALSE, warning=FALSE}
+prediction_model_two =collect(sdf_predict(test,model_two))
+```
+
+```{r message=FALSE, warning=FALSE}
+prediction_model_two$prediction =ifelse(prediction_model_two$prediction > 5.0,5,prediction$prediction)
+
+prediction_model_two$prediction =ifelse(prediction_model_two$prediction < 1.0,1,prediction$prediction)
+
+Model_two_RMSE = sqrt(mean((prediction_model_two$Rating -prediction_model_two$prediction)^2))
+
+Model_two_RMSE
+```
+
+#Model 3
+
+Model three uses Implicit data, in essence, it is used to gather user behavior such as the user listening to a song or not. The model will generate a confidence interval instead of a rating for a particular item.  A higher number would indicate higher confidence.
+```{r message=FALSE, warning=FALSE}
+model_three = ml_als_factorization(train,rating_col ="Rating",user_col ="userID",item_col="artistID",regularization.parameter = 0.1,iter.max = 5,cold_start_strategy="drop",implicit_prefs=TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+prediction_model_three =collect(sdf_predict(test,model_three))
+
+prediction_model_three %>% select(userID,name,prediction) %>%head(10)
+```
+
+# Conclusion
+
+The original model had an RMSE of .55 and model two had a 1.87. Model Three needs to be evaluated using a ROC curve and confusion matrix, but due to timing issues, this was not implemented. Overall factors such as countries could determine a better recommendation for specific users, but this field is missing.
+
+The project was exciting and fun. Most of the time was spent trying to implement spark correctly. Due to lack of time features that I wanted to implement were not conceived. However, in the process, new knowledge has been gained.
+
+For a future implementation, I found a more significant last.fm dataset with 350k user and features such as sex and country included. I would like to implement multiple recommender algorithms to help extract better recommendations.
+
+
+```{r message=FALSE, warning=FALSE}
+spark_disconnect(sc)
+rm(list = ls())
+```
+
+
+
+
+
+
+
+
+
+
+## References
+[stackoverflow create quartile-rank](https://stackoverflow.com/questions/7508229/how-to-create-a-column-with-a-quartile-rank)
+
+[Stack Overflow collapse concatenate columns](https://stackoverflow.com/questions/15933958/collapse-concatenate-aggregate-a-column-to-a-single-comma-separated-string-w)
+
+[spark apache](https://spark.apache.org/docs/latest/sparkr.html#data-type-mapping-between-r-and-spark)
+
+[col-type-in-sparklyr](https://stackoverflow.com/questions/43003185/specifying-col-type-in-sparklyr-spark-read-csv)
+
+[als-implicit-collaborative](https://medium.com/radon-dev/als-implicit-collaborative-filtering-5ed653ba39fe)
+
+
+----------
+References
+----------
+
+   When using this dataset you should cite:
+      - Last.fm website, http://www.lastfm.com
+
+   You may also cite HetRec'11 workshop as follows:
+
+   @inproceedings{Cantador:RecSys2011,
+      author = {Cantador, Iv\'{a}n and Brusilovsky, Peter and Kuflik, Tsvi},
+      title = {2nd Workshop on Information Heterogeneity and Fusion in Recommender Systems (HetRec 2011)},
+      booktitle = {Proceedings of the 5th ACM conference on Recommender systems},
+      series = {RecSys 2011},
+      year = {2011},
+      location = {Chicago, IL, USA},
+      publisher = {ACM},
+      address = {New York, NY, USA},
+      keywords = {information heterogeneity, information integration, recommender systems},
+   } 
+
+-------
+Credits
+-------
+
+   This dataset was built by Ignacio Fernández-Tobías with the collaboration of Iván Cantador and Alejandro Bellogín, 
+   members of the Information Retrieval group at Universidad Autonoma de Madrid (http://ir.ii.uam.es)
+
+
+
+
+
